@@ -1,0 +1,160 @@
+-- 1. Identify the top 5 employees with the fastest response time and highest satisfaction score.
+SELECT Employee_ID, 
+       AVG(Response_Time) AS Avg_Response_Time, 
+       AVG(Satisfaction_Score) AS Avg_Satisfaction 
+FROM Interaction_Fact 
+GROUP BY Employee_ID 
+ORDER BY Avg_Satisfaction DESC, Avg_Response_Time ASC 
+LIMIT 5;
+
+-- 2. Calculate the rolling 7-day average of complaint resolutions.
+SELECT d.Full_Date, 
+       COUNT(c.Complaint_ID) AS Total_Resolved, 
+       AVG(COUNT(c.Complaint_ID)) OVER (ORDER BY d.Full_Date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) AS Rolling_7Day_Avg
+FROM Date_Dim d 
+LEFT JOIN Complaint_Fact c ON d.Date_ID = c.ResolvedOn 
+GROUP BY d.Full_Date 
+ORDER BY d.Full_Date;
+
+-- 3. Determine the percentage change in complaints per month compared to the previous month.
+SELECT Year, Month, 
+       COUNT(Complaint_ID) AS Total_Complaints, 
+       LAG(COUNT(Complaint_ID)) OVER (ORDER BY Year, Month) AS Prev_Month_Complaints, 
+       ((COUNT(Complaint_ID) - LAG(COUNT(Complaint_ID)) OVER (ORDER BY Year, Month)) * 100.0 / NULLIF(LAG(COUNT(Complaint_ID)) OVER (ORDER BY Year, Month), 0)) AS Percentage_Change
+FROM Date_Dim d 
+JOIN Complaint_Fact c ON d.Date_ID = c.CreatedOn 
+GROUP BY Year, Month 
+ORDER BY Year, Month;
+
+-- 4. Find the average response time and satisfaction score per complaint category over time.
+SELECT c.Complaint_Category_ID, d.Year, d.Month, 
+       AVG(i.Response_Time) AS Avg_Response_Time, 
+       AVG(i.Satisfaction_Score) AS Avg_Satisfaction
+FROM Complaint_Fact c 
+JOIN Interaction_Fact i ON c.Employee_ID = i.Employee_ID 
+JOIN Date_Dim d ON c.CreatedOn = d.Date_ID 
+GROUP BY c.Complaint_Category_ID, d.Year, d.Month 
+ORDER BY c.Complaint_Category_ID, d.Year, d.Month;
+
+-- 5. Identify passengers who have escalated complaints more than once in a given year.
+SELECT Passenger_ID, Year, COUNT(*) AS Escalated_Complaints
+FROM (
+    SELECT Passenger_ID, Year, Complaint_ID, COUNT(*) OVER (PARTITION BY Passenger_ID, Year) AS Escalation_Count
+    FROM Complaint_Fact c
+    JOIN Date_Dim d ON c.CreatedOn = d.Date_ID
+    WHERE c.Complaint_Status IN ('Escalated', 'Reopened')
+) AS Escalation_Details
+WHERE Escalation_Count > 1
+GROUP BY Passenger_ID, Year
+ORDER BY Escalation_Count DESC;
+
+-- 6. Analyze customer churn probability based on unresolved complaints within the last 6 months.
+SELECT Passenger_ID, 
+       COUNT(*) AS Unresolved_Complaints,
+       CASE WHEN COUNT(*) > 3 THEN 'High Risk' 
+            WHEN COUNT(*) BETWEEN 1 AND 3 THEN 'Medium Risk' 
+            ELSE 'Low Risk' END AS Churn_Risk
+FROM Complaint_Fact 
+WHERE Complaint_Status != 'Resolved' 
+AND CreatedOn >= DATEADD(MONTH, -6, GETDATE())
+GROUP BY Passenger_ID 
+ORDER BY Unresolved_Complaints DESC;
+
+-- 7. Find the busiest time slots for interactions in a day based on historical data.
+SELECT DATEPART(HOUR, Interaction_Time) AS Hour, 
+       COUNT(*) AS Interaction_Count
+FROM Interaction_Fact
+GROUP BY DATEPART(HOUR, Interaction_Time)
+ORDER BY Interaction_Count DESC;
+
+-- 8. Determine the impact of holidays on complaint resolution times.
+SELECT d.Holiday_Flag, 
+       AVG(DATEDIFF(DAY, c.CreatedOn, c.ResolvedOn)) AS Avg_Resolution_Time
+FROM Complaint_Fact c
+JOIN Date_Dim d ON c.CreatedOn = d.Date_ID
+WHERE c.ResolvedOn IS NOT NULL
+GROUP BY d.Holiday_Flag;
+
+-- 9. Compare satisfaction scores of interactions resolved in under 5 minutes vs. those taking longer.
+SELECT CASE WHEN Response_Time <= 5 THEN 'Under 5 Minutes' ELSE 'Over 5 Minutes' END AS Response_Category,
+       AVG(Satisfaction_Score) AS Avg_Satisfaction
+FROM Interaction_Fact
+GROUP BY Response_Category;
+
+-- 10. Find the most common resolution time buckets for complaints.
+SELECT CASE 
+           WHEN DATEDIFF(DAY, CreatedOn, ResolvedOn) <= 2 THEN '0-2 Days'
+           WHEN DATEDIFF(DAY, CreatedOn, ResolvedOn) BETWEEN 3 AND 7 THEN '3-7 Days'
+           WHEN DATEDIFF(DAY, CreatedOn, ResolvedOn) BETWEEN 8 AND 14 THEN '8-14 Days'
+           ELSE '15+ Days' END AS Resolution_Time_Bucket,
+       COUNT(*) AS Complaint_Count
+FROM Complaint_Fact
+WHERE ResolvedOn IS NOT NULL
+GROUP BY Resolution_Time_Bucket
+ORDER BY Complaint_Count DESC;
+
+-- 11. Rank employees based on average satisfaction score over the last 6 months.
+SELECT Employee_ID, 
+       AVG(Satisfaction_Score) AS Avg_Satisfaction, 
+       RANK() OVER (ORDER BY AVG(Satisfaction_Score) DESC) AS Rank
+FROM Interaction_Fact
+WHERE Interaction_Date >= DATEADD(MONTH, -6, GETDATE())
+GROUP BY Employee_ID;
+
+-- 12. Determine the variance in satisfaction scores per interaction channel.
+SELECT Interaction_Channel, 
+       VARIANCE(Satisfaction_Score) AS Satisfaction_Variance
+FROM Interaction_Fact
+GROUP BY Interaction_Channel;
+
+-- 13. Identify complaint categories that have the highest percentage of unresolved cases.
+SELECT c.Complaint_Category_ID, 
+       (COUNT(CASE WHEN Complaint_Status != 'Resolved' THEN 1 END) * 100.0 / COUNT(*)) AS Unresolved_Percentage
+FROM Complaint_Fact c
+GROUP BY c.Complaint_Category_ID
+ORDER BY Unresolved_Percentage DESC;
+
+-- 14. Analyze how complaint resolution time correlates with satisfaction scores.
+SELECT CORR(DATEDIFF(DAY, CreatedOn, ResolvedOn), Satisfaction_Score) AS Resolution_Satisfaction_Correlation
+FROM Complaint_Fact;
+
+-- 15. Predict the next month’s expected complaint volume using moving averages.
+SELECT Year, Month, COUNT(*) AS Complaints,
+       AVG(COUNT(*)) OVER (ORDER BY Year, Month ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) AS Moving_Avg
+FROM Date_Dim d
+JOIN Complaint_Fact c ON d.Date_ID = c.CreatedOn
+GROUP BY Year, Month
+ORDER BY Year, Month;
+
+-- 16. Find the most loyal passengers based on interaction frequency and satisfaction.
+SELECT Passenger_ID, COUNT(*) AS Total_Interactions, AVG(Satisfaction_Score) AS Avg_Satisfaction
+FROM Interaction_Fact
+GROUP BY Passenger_ID
+ORDER BY Total_Interactions DESC, Avg_Satisfaction DESC;
+
+-- 17. Determine which airports experience the most severe complaint delays.
+SELECT Airport_ID, 
+       AVG(DATEDIFF(DAY, CreatedOn, ResolvedOn)) AS Avg_Resolution_Time
+FROM Complaint_Fact
+WHERE ResolvedOn IS NOT NULL
+GROUP BY Airport_ID
+ORDER BY Avg_Resolution_Time DESC;
+
+-- 18. Identify employees with a high volume of interactions but low satisfaction scores.
+SELECT Employee_ID, COUNT(*) AS Total_Interactions, AVG(Satisfaction_Score) AS Avg_Satisfaction
+FROM Interaction_Fact
+GROUP BY Employee_ID
+HAVING COUNT(*) > 50 AND AVG(Satisfaction_Score) < 3;
+
+-- 19. Find passengers who have used different complaint channels.
+SELECT Passenger_ID, COUNT(DISTINCT Complaint_Channel) AS Unique_Channels
+FROM Complaint_Fact
+GROUP BY Passenger_ID
+ORDER BY Unique_Channels DESC;
+
+-- 20. Identify seasonal trends in complaints.
+SELECT Month_Name, COUNT(*) AS Total_Complaints
+FROM Date_Dim d
+JOIN Complaint_Fact c ON d.Date_ID = c.CreatedOn
+GROUP BY Month_Name
+ORDER BY Total_Complaints DESC;

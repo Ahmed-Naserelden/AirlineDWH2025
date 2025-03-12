@@ -1,0 +1,82 @@
+CREATE TABLE Employee_Dim (
+    Employee_ID INT PRIMARY KEY,
+    Age INT,
+    Gender VARCHAR(10),
+    Role VARCHAR(50),
+    Status VARCHAR(20)
+);
+
+CREATE TABLE Passenger_Dim (
+    Passenger_ID INT PRIMARY KEY,
+    Age_Category VARCHAR(20),
+    Gender VARCHAR(10),
+    Occupation VARCHAR(50),
+    Nationality VARCHAR(50),
+    Membership_Status VARCHAR(20),
+    Loyalty_Tier VARCHAR(20),
+    City VARCHAR(50),
+    Country VARCHAR(50)
+);
+
+CREATE TABLE Date_Dim (
+    Date_ID INT PRIMARY KEY,
+    Full_Date DATE,
+    Day INT,
+    Month INT,
+    Month_Name VARCHAR(20),
+    Quarter INT,
+    Year INT,
+    Weekday_Name VARCHAR(20),
+    Is_Weekend BOOLEAN,
+    Holiday_Flag BOOLEAN
+);
+
+CREATE TABLE Airport_Dim (
+    Airport_Code VARCHAR(10) PRIMARY KEY,
+    Airport_Name VARCHAR(100),
+    City VARCHAR(50),
+    Country VARCHAR(50)
+);
+
+CREATE TABLE Complaint_Category_Dim (
+    Complaint_Category_ID INT PRIMARY KEY,
+    Category_Name VARCHAR(100),
+    Default_Resolution_Time INT
+);
+
+CREATE TABLE Interaction_Fact (
+    Interaction_ID INT PRIMARY KEY,
+    Employee_ID INT REFERENCES Employee_Dim(Employee_ID),
+    Passenger_ID INT REFERENCES Passenger_Dim(Passenger_ID),
+    Interaction_Date INT REFERENCES Date_Dim(Date_ID),
+    Response_Date INT REFERENCES Date_Dim(Date_ID),
+    Satisfaction_Score DECIMAL(3,2),
+    Response_Time INT,
+    Interaction_Time INT,
+    Interaction_Channel VARCHAR(50)
+);
+
+CREATE TABLE Complaint_Fact (
+    Complaint_ID INT PRIMARY KEY,
+    Complaint_Category_ID INT REFERENCES Complaint_Category_Dim(Complaint_Category_ID),
+    Employee_ID INT REFERENCES Employee_Dim(Employee_ID),
+    Passenger_ID INT REFERENCES Passenger_Dim(Passenger_ID),
+    Airport_ID VARCHAR(10) REFERENCES Airport_Dim(Airport_Code),
+    Complaint_Channel VARCHAR(50),
+    Satisfaction_Score DECIMAL(3,2),
+    Complaint_Status VARCHAR(20),
+    CreatedOn INT REFERENCES Date_Dim(Date_ID),
+    FirstResponseOn INT REFERENCES Date_Dim(Date_ID),
+    InvestigationStartOn INT REFERENCES Date_Dim(Date_ID),
+    InvestigationEndOn INT REFERENCES Date_Dim(Date_ID),
+    ResolvedOn INT REFERENCES Date_Dim(Date_ID)
+);
+
+-- Optimize table distribution for performance
+ALTER TABLE Employee_Dim ALTER DISTSTYLE ALL;
+ALTER TABLE Passenger_Dim ALTER DISTSTYLE ALL;
+ALTER TABLE Date_Dim ALTER DISTSTYLE ALL;
+ALTER TABLE Airport_Dim ALTER DISTSTYLE ALL;
+ALTER TABLE Complaint_Category_Dim ALTER DISTSTYLE ALL;
+ALTER TABLE Interaction_Fact ALTER DISTSTYLE KEY DISTKEY(Employee_ID);
+ALTER TABLE Complaint_Fact ALTER DISTSTYLE KEY DISTKEY(Passenger_ID);
